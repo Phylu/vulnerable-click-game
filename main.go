@@ -2,7 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -44,7 +47,13 @@ func main() {
 	mux.HandleFunc("/login", login)
 	mux.HandleFunc("/logout", logout)
 	mux.HandleFunc("/register", staticPage)
+	mux.HandleFunc("/game", loggedInStaticPage)
+	mux.HandleFunc("/highscore", loggedInStaticPage)
 	mux.HandleFunc("/", index)
+
+	// Register API
+	mux.HandleFunc("/api/score", submitPoints)
+	mux.HandleFunc("/api/highscore", getHighscore)
 
 	port := "8080"
 	if _, ok := os.LookupEnv("PORT"); ok {
@@ -95,6 +104,11 @@ func logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", 302)
 }
 
+func loggedInStaticPage(w http.ResponseWriter, r *http.Request) {
+	loggedIn(w, r)
+	staticPage(w, r)
+}
+
 func staticPage(w http.ResponseWriter, r *http.Request) {
 	executeTemplate(r.URL.Path, w)
 }
@@ -126,4 +140,84 @@ func checkLogin(form map[string][]string) int {
 	}
 
 	return id
+}
+
+func userID(w http.ResponseWriter, r *http.Request) int {
+	return sessionManager.GetInt(r.Context(), "userID")
+}
+
+func loggedIn(w http.ResponseWriter, r *http.Request) int {
+	userID := userID(w, r)
+	// If the userID == 0, the user is not loggid in
+	if userID == 0 {
+		http.Redirect(w, r, "/login", 302)
+	}
+
+	return userID
+}
+
+type Score struct {
+	UserID int    `json:"userid"`
+	Name   string `json:"name"`
+	Points int    `json:"points"`
+}
+
+func submitPoints(w http.ResponseWriter, r *http.Request) {
+	var score Score
+
+	userID := userID(w, r)
+	if userID == 0 {
+		w.WriteHeader(http.StatusForbidden)
+	}
+
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	if err != nil {
+		log.Println("Problem receiving Points: ", err)
+	}
+	if err := r.Body.Close(); err != nil {
+		log.Println("Problem receiving Points: ", err)
+	}
+
+	if err := json.Unmarshal(body, &score); err != nil {
+		log.Println(err)
+	}
+
+	stmt, err := DB.Prepare("INSERT INTO highscore(name, userid, points) values(?, ?, ?)")
+	if err != nil {
+		log.Println(err)
+	}
+
+	log.Println(score.Name, userID, score.Points)
+	_, err = stmt.Exec(score.Name, userID, score.Points)
+	if err != nil {
+		log.Println(err)
+	}
+
+}
+
+func getHighscore(w http.ResponseWriter, r *http.Request) {
+	/*userID := userID(w, r)
+	if userID == 0 {
+		w.WriteHeader(http.StatusForbidden)
+	}*/
+
+	var scores []Score
+
+	result, err := DB.Query("SELECT name, userid, points FROM highscore")
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer result.Close()
+	for result.Next() {
+		var score Score
+		err = result.Scan(&score.Name, &score.UserID, &score.Points)
+		if err != nil {
+			log.Println(err)
+		}
+		scores = append(scores, score)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(scores)
 }

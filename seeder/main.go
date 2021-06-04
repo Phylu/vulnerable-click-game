@@ -15,10 +15,11 @@ func main() {
 
 	createUsersTable(db)
 	createUsers(db)
+	createHighscoreTable(db)
 }
 
 func createUsersTable(db *sql.DB) {
-	stmt, err := db.Prepare("CREATE TABLE `users` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `email` VARCHAR(64) NULL, `password` VARCHAR(64) NULL);")
+	stmt, err := db.Prepare("CREATE TABLE `users` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `email` VARCHAR(64), `password` VARCHAR(64));")
 	checkErr(err)
 
 	_, err = stmt.Exec()
@@ -33,6 +34,14 @@ func createUsers(db *sql.DB) {
 	checkErr(err)
 
 	_, err = stmt.Exec(2, "user@vulnerable-click.game", "password")
+	checkErr(err)
+}
+
+func createHighscoreTable(db *sql.DB) {
+	stmt, err := db.Prepare("CREATE TABLE `highscore` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `userid` INTEGER, `name` VARCHAR(64) NULL, `points` INTEGER);")
+	checkErr(err)
+
+	_, err = stmt.Exec()
 	checkErr(err)
 }
 
