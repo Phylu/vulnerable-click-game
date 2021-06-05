@@ -1,4 +1,4 @@
-package main
+package seeder
 
 import (
 	"database/sql"
@@ -7,7 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func main() {
+func Seed() {
 	os.Remove("./sqlite.db")
 
 	db, err := sql.Open("sqlite3", "./sqlite.db")
@@ -16,6 +16,8 @@ func main() {
 	createUsersTable(db)
 	createUsers(db)
 	createHighscoreTable(db)
+
+	db.Close()
 }
 
 func createUsersTable(db *sql.DB) {
@@ -30,10 +32,10 @@ func createUsers(db *sql.DB) {
 	stmt, err := db.Prepare("INSERT INTO users(id, email, password) values(?, ?, ?)")
 	checkErr(err)
 
-	_, err = stmt.Exec(1, "root@vulnerable-click.game", "password")
+	_, err = stmt.Exec(1, "root@vulnerable-click.game", "adminPassword")
 	checkErr(err)
 
-	_, err = stmt.Exec(2, "user@vulnerable-click.game", "password")
+	_, err = stmt.Exec(2, "user@vulnerable-click.game", "userPassword")
 	checkErr(err)
 }
 

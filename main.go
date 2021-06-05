@@ -14,6 +14,7 @@ import (
 
 	scs "github.com/alexedwards/scs/v2"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/phylu/vulnerable-click-game/seeder"
 )
 
 var sessionManager *scs.SessionManager
@@ -30,6 +31,7 @@ func InitDB() {
 
 func main() {
 	// Initialize Database
+	seeder.Seed()
 	InitDB()
 	defer DB.Close()
 
@@ -47,8 +49,10 @@ func main() {
 	mux.HandleFunc("/login", login)
 	mux.HandleFunc("/logout", logout)
 	mux.HandleFunc("/register", staticPage)
+	mux.HandleFunc("/imprint", staticPage)
 	mux.HandleFunc("/game", loggedInStaticPage)
 	mux.HandleFunc("/highscore", loggedInStaticPage)
+	mux.HandleFunc("/setup", setup)
 	mux.HandleFunc("/", index)
 
 	// Register API
@@ -61,7 +65,7 @@ func main() {
 	}
 
 	// Start Webserver
-	log.Println("Starting Webserver on port ", port)
+	log.Println("Starting Webserver on port", port)
 	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
 	if err != nil {
 		log.Fatal(err)
@@ -71,12 +75,14 @@ func main() {
 
 func index(w http.ResponseWriter, r *http.Request) {
 	userID := sessionManager.GetInt(r.Context(), "userID")
-	log.Println("Checking login for userID: ", userID)
 
 	if userID == 0 {
 		http.Redirect(w, r, "/login", 302)
 	} else {
-		executeTemplate("/index", w)
+		email := getUserEmail(userID)
+		var d TemplateData
+		d.Email = email
+		executeTemplate("/index", w, d)
 	}
 
 }
@@ -94,7 +100,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	executeTemplate(r.URL.Path, w)
+	staticPage(w, r)
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
@@ -105,21 +111,30 @@ func logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func loggedInStaticPage(w http.ResponseWriter, r *http.Request) {
-	loggedIn(w, r)
-	staticPage(w, r)
+	userID := loggedIn(w, r)
+	email := getUserEmail(userID)
+	var d TemplateData
+	d.Email = email
+
+	executeTemplate(r.URL.Path, w, d)
 }
 
 func staticPage(w http.ResponseWriter, r *http.Request) {
-	executeTemplate(r.URL.Path, w)
+	var d TemplateData
+	executeTemplate(r.URL.Path, w, d)
 }
 
-func executeTemplate(templateFile string, w http.ResponseWriter) {
+type TemplateData struct {
+	Email string
+}
+
+func executeTemplate(templateFile string, w http.ResponseWriter, d TemplateData) {
 	templatePath := fmt.Sprintf("templates%s.html", templateFile)
 	t, err := template.ParseFiles(templatePath)
 	if err != nil {
 		log.Println("Template Parsing Error: ", err)
 	}
-	err = t.Execute(w, nil)
+	err = t.Execute(w, d)
 	if err != nil {
 		log.Println("Template Execution Error: ", err)
 	}
@@ -156,6 +171,15 @@ func loggedIn(w http.ResponseWriter, r *http.Request) int {
 	return userID
 }
 
+func getUserEmail(userID int) string {
+	var email string
+	err := DB.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&email)
+	if err != nil {
+		log.Println("Problem retrieving user from database: ", err)
+	}
+	return email
+}
+
 type Score struct {
 	UserID int    `json:"userid"`
 	Name   string `json:"name"`
@@ -163,12 +187,13 @@ type Score struct {
 }
 
 func submitPoints(w http.ResponseWriter, r *http.Request) {
-	var score Score
-
 	userID := userID(w, r)
 	if userID == 0 {
 		w.WriteHeader(http.StatusForbidden)
+		return
 	}
+
+	var score Score
 
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
@@ -195,13 +220,18 @@ func submitPoints(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type Highscore struct {
+	Data []Score `json:"data"`
+}
+
 func getHighscore(w http.ResponseWriter, r *http.Request) {
-	/*userID := userID(w, r)
+	userID := userID(w, r)
 	if userID == 0 {
 		w.WriteHeader(http.StatusForbidden)
-	}*/
+		return
+	}
 
-	var scores []Score
+	scores := []Score{}
 
 	result, err := DB.Query("SELECT name, userid, points FROM highscore")
 	if err != nil {
@@ -218,6 +248,16 @@ func getHighscore(w http.ResponseWriter, r *http.Request) {
 		scores = append(scores, score)
 	}
 
+	var highscore Highscore
+	highscore.Data = scores
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(scores)
+	json.NewEncoder(w).Encode(highscore)
+}
+
+func setup(w http.ResponseWriter, r *http.Request) {
+	DB.Close()
+	seeder.Seed()
+	InitDB()
+	io.WriteString(w, "Success.\n")
 }

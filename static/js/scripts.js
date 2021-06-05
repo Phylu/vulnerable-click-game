@@ -57,3 +57,14 @@ function sendScore() {
             alert("There was a problem adding your score. Please try again.")
         });
 }
+
+function getHighscore() {
+    $('#dataTable').DataTable( {
+        "ajax": "api/highscore",
+        "columns": [
+            { "data": "name" },
+            { "data": "points" },
+        ],
+        "order": [[ 1, "desc" ]]
+    } );
+}
