@@ -36,10 +36,10 @@ function setDisplay() {
 }
 
 function sendScore() {
-    var name = prompt("Please enter your name", "Anonymous");
+    var victoryshout = prompt("Shout something about your victory:", "Hell Yeah!");
     data = {
         points: counter,
-        name: name,
+        victoryshout: victoryshout,
     };
     console.log("Sending Score: ", data);
     $.ajax({
@@ -62,8 +62,28 @@ function getHighscore() {
     $('#dataTable').DataTable( {
         "ajax": "api/highscore",
         "columns": [
-            { "data": "name" },
+            { "data": "email" },
             { "data": "points" },
+            { "data": "victoryshout"}
+        ],
+        "order": [[ 1, "desc" ]]
+    } );
+}
+
+function getUserScores() {
+    let searchParams = new URLSearchParams(window.location.search)
+    let userid = searchParams.get("userid")
+    $('#dataTable').DataTable( {
+        "ajax": {
+            "url": "api/userscores",
+            "data": {
+                "userid": userid
+            }
+        },
+        "columns": [
+            { "data": "email" },
+            { "data": "points" },
+            { "data": "victoryshout"}
         ],
         "order": [[ 1, "desc" ]]
     } );

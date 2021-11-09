@@ -16,6 +16,7 @@ func Seed() {
 	createUsersTable(db)
 	createUsers(db)
 	createHighscoreTable(db)
+	createHighscores(db)
 
 	db.Close()
 }
@@ -40,10 +41,24 @@ func createUsers(db *sql.DB) {
 }
 
 func createHighscoreTable(db *sql.DB) {
-	stmt, err := db.Prepare("CREATE TABLE `highscore` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `userid` INTEGER, `name` VARCHAR(64) NULL, `points` INTEGER);")
+	stmt, err := db.Prepare("CREATE TABLE `highscore` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `userid` INTEGER, `points` INTEGER, `victoryshout` VARCHAR(256) NULL);")
 	checkErr(err)
 
 	_, err = stmt.Exec()
+	checkErr(err)
+}
+
+func createHighscores(db *sql.DB) {
+	stmt, err := db.Prepare("INSERT INTO highscore(id, userid, points, victoryshout) values(?, ?, ?, ?)")
+	checkErr(err)
+
+	_, err = stmt.Exec(1, 1, 42, "The answer to the Ultimate Question of Life, the Universe, and Everything")
+	checkErr(err)
+
+	_, err = stmt.Exec(2, 1, 1337, "Leet!")
+	checkErr(err)
+
+	_, err = stmt.Exec(3, 2, 7, "Not so bad. Is it?")
 	checkErr(err)
 }
 

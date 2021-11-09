@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -42,22 +43,24 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Register Static Files
-	fileServer := http.FileServer((http.Dir("./static")))
-	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+	fileServer := http.FileServer((http.Dir(".")))
+	mux.Handle("/", fileServer)
 
 	// Register Dynamic Files
 	mux.HandleFunc("/login", login)
 	mux.HandleFunc("/logout", logout)
 	mux.HandleFunc("/register", staticPage)
+	mux.HandleFunc("/dashboard", dashboard)
 	mux.HandleFunc("/imprint", staticPage)
 	mux.HandleFunc("/game", loggedInStaticPage)
 	mux.HandleFunc("/highscore", loggedInStaticPage)
+	mux.HandleFunc("/profile", loggedInStaticPage)
 	mux.HandleFunc("/setup", setup)
-	mux.HandleFunc("/", index)
 
 	// Register API
 	mux.HandleFunc("/api/score", submitPoints)
 	mux.HandleFunc("/api/highscore", getHighscore)
+	mux.HandleFunc("/api/userscores", getUserScores)
 
 	port := "8080"
 	if _, ok := os.LookupEnv("PORT"); ok {
@@ -73,16 +76,17 @@ func main() {
 
 }
 
-func index(w http.ResponseWriter, r *http.Request) {
+func dashboard(w http.ResponseWriter, r *http.Request) {
 	userID := sessionManager.GetInt(r.Context(), "userID")
 
 	if userID == 0 {
-		http.Redirect(w, r, "/login", 302)
+		log.Println("No user... :(")
+		http.Redirect(w, r, "/", http.StatusFound)
 	} else {
 		email := getUserEmail(userID)
 		var d TemplateData
 		d.Email = email
-		executeTemplate("/index", w, d)
+		executeTemplate("/dashboard", w, d)
 	}
 
 }
@@ -96,18 +100,19 @@ func login(w http.ResponseWriter, r *http.Request) {
 		if userID > 0 {
 			log.Println("Login detected. Setting userID to: ", userID)
 			sessionManager.Put(r.Context(), "userID", userID)
-			http.Redirect(w, r, "/", 302)
+			http.Redirect(w, r, "/dashboard", http.StatusFound)
+			return
 		}
 	}
 
-	staticPage(w, r)
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
 	log.Println("Removing Session ID from Session")
 	sessionManager.Remove(r.Context(), "userID")
 
-	http.Redirect(w, r, "/login", 302)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func loggedInStaticPage(w http.ResponseWriter, r *http.Request) {
@@ -163,9 +168,9 @@ func userID(w http.ResponseWriter, r *http.Request) int {
 
 func loggedIn(w http.ResponseWriter, r *http.Request) int {
 	userID := userID(w, r)
-	// If the userID == 0, the user is not loggid in
+	// If the userID == 0, the user is not logged in
 	if userID == 0 {
-		http.Redirect(w, r, "/login", 302)
+		http.Redirect(w, r, "/login", http.StatusFound)
 	}
 
 	return userID
@@ -181,9 +186,10 @@ func getUserEmail(userID int) string {
 }
 
 type Score struct {
-	UserID int    `json:"userid"`
-	Name   string `json:"name"`
-	Points int    `json:"points"`
+	UserID       int    `json:"userid"`
+	Email        string `json:"email"`
+	Points       int    `json:"points"`
+	VictoryShout string `json:"victoryshout"`
 }
 
 func submitPoints(w http.ResponseWriter, r *http.Request) {
@@ -207,13 +213,13 @@ func submitPoints(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	stmt, err := DB.Prepare("INSERT INTO highscore(name, userid, points) values(?, ?, ?)")
+	stmt, err := DB.Prepare("INSERT INTO highscore(userid, points, victoryshout) values(?, ?, ?)")
 	if err != nil {
 		log.Println(err)
 	}
 
-	log.Println(score.Name, userID, score.Points)
-	_, err = stmt.Exec(score.Name, userID, score.Points)
+	log.Println(userID, score.Points, score.VictoryShout)
+	_, err = stmt.Exec(userID, score.Points, score.VictoryShout)
 	if err != nil {
 		log.Println(err)
 	}
@@ -233,7 +239,7 @@ func getHighscore(w http.ResponseWriter, r *http.Request) {
 
 	scores := []Score{}
 
-	result, err := DB.Query("SELECT name, userid, points FROM highscore")
+	result, err := DB.Query("SELECT userid, points, victoryshout FROM highscore")
 	if err != nil {
 		log.Println(err)
 	}
@@ -241,10 +247,11 @@ func getHighscore(w http.ResponseWriter, r *http.Request) {
 	defer result.Close()
 	for result.Next() {
 		var score Score
-		err = result.Scan(&score.Name, &score.UserID, &score.Points)
+		err = result.Scan(&score.UserID, &score.Points, &score.VictoryShout)
 		if err != nil {
 			log.Println(err)
 		}
+		score.Email = getUserEmail(score.UserID)
 		scores = append(scores, score)
 	}
 
@@ -253,6 +260,43 @@ func getHighscore(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(highscore)
+}
+
+func getUserScores(w http.ResponseWriter, r *http.Request) {
+	userID := userID(w, r)
+	if userID == 0 {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	profileID := r.URL.Query().Get("userid")
+	if profileID == "me" {
+		profileID = strconv.Itoa(userID)
+	}
+
+	scores := []Score{}
+
+	result, err := DB.Query("SELECT userid, points, victoryshout FROM highscore WHERE userid = ?", profileID)
+	if err != nil {
+		log.Println(err)
+	}
+
+	defer result.Close()
+	for result.Next() {
+		var score Score
+		err = result.Scan(&score.UserID, &score.Points, &score.VictoryShout)
+		if err != nil {
+			log.Println(err)
+		}
+		score.Email = getUserEmail(score.UserID)
+		scores = append(scores, score)
+	}
+
+	var userHighscore Highscore
+	userHighscore.Data = scores
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(userHighscore)
 }
 
 func setup(w http.ResponseWriter, r *http.Request) {
