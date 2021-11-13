@@ -45,6 +45,9 @@ func main() {
 	// Register Static Files
 	fileServer := http.FileServer((http.Dir(".")))
 	mux.Handle("/", fileServer)
+	// !!!But not in the root directory of the repository!!!
+	// fileServer := http.FileServer((http.Dir("./static")))
+	// mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
 
 	// Register Dynamic Files
 	mux.HandleFunc("/login", login)
@@ -69,6 +72,8 @@ func main() {
 
 	// Start Webserver
 	log.Println("Starting Webserver on port", port)
+	// We need to make sure that we add security headers to all requests using e.g. a middleware
+	// w.Header().Add("X-Frame-Options", "DENY")
 	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
 	if err != nil {
 		log.Fatal(err)
@@ -219,6 +224,7 @@ func submitPoints(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println(userID, score.Points, score.VictoryShout)
+	// There is no SQL-I possible here, but an XSS. Why don't we use html.EscapeString() on the values?
 	_, err = stmt.Exec(userID, score.Points, score.VictoryShout)
 	if err != nil {
 		log.Println(err)
@@ -269,6 +275,7 @@ func getUserScores(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Why do we even allow the user to provide a userid in the query instead of using the userID from the session directly?
 	profileID := r.URL.Query().Get("userid")
 	if profileID == "me" {
 		profileID = strconv.Itoa(userID)
