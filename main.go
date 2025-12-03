@@ -61,6 +61,7 @@ func main() {
 	mux.HandleFunc("/api/score", submitPoints)
 	mux.HandleFunc("/api/highscore", getHighscore)
 	mux.HandleFunc("/api/userscores", getUserScores)
+	mux.HandleFunc("/api/export", exportUserData)
 
 	port := "8080"
 	if _, ok := os.LookupEnv("PORT"); ok {
@@ -301,4 +302,41 @@ func setup(w http.ResponseWriter, r *http.Request) {
 	seeder.Seed()
 	InitDB()
 	io.WriteString(w, "Success.\n")
+}
+
+type UserData struct {
+	UserID   int    `json:"userid"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// exportUserData exports user data including password in plaintext
+// Vulnerable: A02:2021 - Cryptographic Failures
+// Exposes sensitive data (passwords) without encryption
+func exportUserData(w http.ResponseWriter, r *http.Request) {
+	userID := userID(w, r)
+	if userID == 0 {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	// Intentionally vulnerable: allow user to export any user's data via query parameter
+	exportUserID := r.URL.Query().Get("userid")
+	if exportUserID == "" || exportUserID == "me" {
+		exportUserID = strconv.Itoa(userID)
+	}
+
+	var userData UserData
+	// Vulnerable: Exposing password in plaintext
+	err := DB.QueryRow("SELECT id, email, password FROM users WHERE id = ?", exportUserID).Scan(&userData.UserID, &userData.Email, &userData.Password)
+	if err != nil {
+		log.Println("Problem retrieving user data: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Set headers to trigger download
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=userdata.json")
+	json.NewEncoder(w).Encode(userData)
 }
