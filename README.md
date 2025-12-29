@@ -1,7 +1,13 @@
 # vulnerable-click-game
 An online click game written in golang that deliberately contains vulnerabilities for learning purposes.
 
-# Vulnerabilities
+## Run the application
+
+To run the application on your machine, you need a `golang` environment. Checkout the source code and execute: `go run .`
+
+This will download all the dependencies, build and run the application for your environment. You are then able to access it in your browser using `http://localhost:8080/`.
+
+## Vulnerabilities
 
 > Please stop reading here, if you don't want to spoil your fun by knowing the vulnerabilities. If you want some pointers, just keep on reading.
 
